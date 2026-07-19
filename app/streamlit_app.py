@@ -43,6 +43,20 @@ def load_data():
 PRICE, NAMES = load_data()
 ALL_DATES = sorted({d for df in PRICE.values() for d in df.index})
 
+
+def _signal_fn(strat_name):
+    return make_breakout_signal_fn() if strat_name == "돌파 모멘텀" else make_meanrev_signal_fn()
+
+
+@st.cache_data(show_spinner=False)
+def cached_backtest(strat_name, params_items, d0, d1):
+    """백테스트를 캐시. 같은 (전략, 파라미터, 기간)이면 즉시 반환."""
+    params = dict(params_items)
+    dates = [d for d in ALL_DATES if d0 <= d.date() <= d1]
+    res = run_backtest(PRICE, dates, _signal_fn(strat_name), params, BacktestConfig())
+    return res.equity, res.trades, dates
+
+
 # ---- 헤더 ----
 st.title("🕳️ nullbt")
 st.markdown("#### 네 엣지는 증명 전까지 null이다")
@@ -52,16 +66,18 @@ st.caption(
     "[GitHub](https://github.com/KsPsD/nullbt) · [배경 글](https://valuebridge.tistory.com/5)"
 )
 
-# ---- 사이드바: 전략/파라미터 ----
+# ---- 사이드바 ----
 with st.sidebar:
     st.header("전략 설정")
     strat = st.selectbox("전략", ["돌파 모멘텀", "평균회귀"])
 
+    default_start = ALL_DATES[-504].date()  # 기본: 최근 약 2년(빠름)
     d0, d1 = st.select_slider(
         "기간",
         options=[d.date() for d in ALL_DATES],
-        value=(ALL_DATES[0].date(), ALL_DATES[-1].date()),
+        value=(default_start, ALL_DATES[-1].date()),
     )
+    st.caption("⏱️ 기간이 길수록 느립니다. 최초 실행은 계산에 시간이 걸립니다(같은 설정 재실행은 즉시).")
 
     st.subheader("파라미터")
     cutoff = st.slider("신호 확신 컷오프", 0, 90, 30, 5)
@@ -80,14 +96,13 @@ with st.sidebar:
     st.subheader("정직성 점검용")
     n_trials = st.number_input(
         "이 결과를 얻기까지 시도한 조합 수", min_value=1, max_value=5000, value=50,
-        help="파라미터를 몇 번 바꿔봤는지. DSR이 이 숫자만큼 성과를 의심합니다. "
-        "슬라이더를 만지작거린 횟수를 정직하게 넣으세요.",
+        help="파라미터를 몇 번 바꿔봤는지. DSR이 이 숫자만큼 성과를 의심합니다.",
     )
     run = st.button("백테스트 실행", type="primary", use_container_width=True)
 
 
 def build_params():
-    p = {
+    return {
         "confidence_threshold": cutoff,
         "confidence_cutoff": float(cutoff),
         "stop_pct": stop,
@@ -96,34 +111,34 @@ def build_params():
         "volume_threshold": 1.5,
         "entropy_weight": ent_w,
     }
-    return p
-
-
-def signal_fn():
-    return make_breakout_signal_fn() if strat == "돌파 모멘텀" else make_meanrev_signal_fn()
 
 
 if not run:
-    st.info("← 왼쪽에서 전략을 고르고 **백테스트 실행**을 눌러보세요.")
+    st.info(
+        "← 왼쪽에서 전략을 고르고 **백테스트 실행**을 눌러보세요. "
+        "최초 실행은 기간에 따라 10~40초 정도 걸립니다(클라우드 CPU). 같은 설정 재실행은 즉시입니다."
+    )
     st.stop()
 
-# ---- 백테스트 ----
-dates = [d for d in ALL_DATES if d0 <= d.date() <= d1]
-if len(dates) < 60:
+if len([d for d in ALL_DATES if d0 <= d.date() <= d1]) < 60:
     st.error("기간이 너무 짧습니다. 최소 60거래일 이상 선택하세요.")
     st.stop()
 
 params = build_params()
-res = run_backtest(PRICE, dates, signal_fn(), params, BacktestConfig())
-rets = res.equity.pct_change().dropna()
+params_items = tuple(sorted(params.items()))
+
+with st.spinner("백테스트 계산 중… (최초 실행은 시간이 걸립니다)"):
+    equity, trades, dates = cached_backtest(strat, params_items, d0, d1)
+
+rets = equity.pct_change().dropna()
 shp = sharpe_ratio(rets)
-mdd = max_drawdown(res.equity)
-ret_cagr = cagr(res.equity)
+mdd = max_drawdown(equity)
+ret_cagr = cagr(equity)
 n_obs = len(rets)
 
 # ---- 결과: 수익곡선 ----
 st.subheader("📈 결과 (겉모습)")
-eq = res.equity.copy()
+eq = equity.copy()
 eq.index = pd.DatetimeIndex(eq.index)
 st.line_chart((eq / eq.iloc[0]).rename("자산배수"))
 
@@ -131,14 +146,13 @@ c1, c2, c3, c4 = st.columns(4)
 c1.metric("Sharpe", f"{shp:.2f}")
 c2.metric("CAGR", f"{ret_cagr * 100:.1f}%")
 c3.metric("최대낙폭", f"{mdd * 100:.1f}%")
-c4.metric("거래수", f"{len(res.trades)}")
+c4.metric("거래수", f"{len(trades)}")
 
 st.divider()
 
-# ---- 회의적 리포트 (nullbt의 본체) ----
+# ---- 회의적 리포트 ----
 st.subheader("🔍 회의적 리포트 — 이 결과를 믿어도 될까요?")
 
-# 1) DSR
 dsr = deflated_sharpe(shp / math.sqrt(252), int(n_trials), n_obs)
 col_a, col_b = st.columns(2)
 with col_a:
@@ -151,13 +165,11 @@ with col_a:
     else:
         st.error("이 시도 횟수로는 우연과 구분되지 않습니다.")
 
-# 2) 부트스트랩 CI
 with col_b:
     st.markdown("**2. 블록 부트스트랩 신뢰구간**")
     if n_obs >= 30:
         bs = bootstrap_metrics(rets, n_resamples=500, expected_block=20, seed=0)
-        st.metric("Sharpe 점추정", f"{bs.sharpe.point:.2f}",
-                  help="아래 구간이 이 값이 얼마나 흔들리는지 보여줍니다.")
+        st.metric("Sharpe 점추정", f"{bs.sharpe.point:.2f}")
         st.write(f"95% CI: **{bs.sharpe.low:.2f} ~ {bs.sharpe.high:.2f}**")
         if bs.sharpe.low <= 0 <= bs.sharpe.high:
             st.error("신뢰구간이 0을 포함합니다 — 수익이 우연일 여지가 큽니다.")
@@ -166,21 +178,22 @@ with col_b:
     else:
         st.write("표본이 부족해 CI를 생략합니다(≥30일 필요).")
 
-# 3) IS / OOS 붕괴 점검
-st.markdown("**3. In-Sample vs Out-of-Sample**")
-try:
-    is_d, oos_d, hold_d = split_three_way(dates)
-    is_r = run_backtest(PRICE, is_d, signal_fn(), params, BacktestConfig()).equity.pct_change().dropna()
-    oos_r = run_backtest(PRICE, oos_d, signal_fn(), params, BacktestConfig()).equity.pct_change().dropna()
-    is_s, oos_s = sharpe_ratio(is_r), sharpe_ratio(oos_r)
+# 3) IS/OOS — 무거우니 옵트인
+st.markdown("**3. In-Sample vs Out-of-Sample (과적합 점검)**")
+st.caption("백테스트를 2번 더 돌려 확인합니다(추가 시간 소요). 필요할 때만 실행하세요.")
+if st.button("🔬 IS/OOS 정밀검증 실행"):
+    with st.spinner("IS/OOS 백테스트 실행 중…"):
+        is_d, oos_d, _ = split_three_way(dates)
+        is_eq, _, _ = cached_backtest(strat, params_items, is_d[0].date(), is_d[-1].date())
+        oos_eq, _, _ = cached_backtest(strat, params_items, oos_d[0].date(), oos_d[-1].date())
+        is_s = sharpe_ratio(is_eq.pct_change().dropna())
+        oos_s = sharpe_ratio(oos_eq.pct_change().dropna())
     cc1, cc2, cc3 = st.columns(3)
     cc1.metric("IS Sharpe", f"{is_s:.2f}")
     cc2.metric("OOS Sharpe", f"{oos_s:.2f}")
     cc3.metric("과적합 격차 (IS−OOS)", f"{is_s - oos_s:.2f}")
     if is_s > 0 and oos_s < is_s * 0.3:
         st.error("OOS에서 성과가 대부분 사라졌습니다 — 과적합 신호.")
-except Exception as e:  # noqa: BLE001
-    st.write(f"(분할 점검 생략: {e})")
 
 # 4) 정직성 체크리스트
 st.markdown("**4. 구조적 편향 점검**")
