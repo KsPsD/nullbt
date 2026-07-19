@@ -1,4 +1,4 @@
-# Streamlit Community Cloud 배포용. 앱은 로컬 패키지(nullbt)를 editable로 설치해 import.
--e .
+# Streamlit Community Cloud 배포용.
+# 배포 앱은 번들된 parquet만 읽으므로 finance-datareader는 불필요(로컬 데이터 갱신 때만 씀).
+.
 streamlit>=1.40
-finance-datareader>=0.9.90
