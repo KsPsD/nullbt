@@ -11,7 +11,10 @@ def sharpe_ratio(returns: pd.Series, periods_per_year: int = 252) -> float:
     if returns is None or len(returns) < 2:
         return 0.0
     std = returns.std(ddof=1)
-    if std == 0 or math.isnan(std):
+    # 부동소수점상 '상수' 수익률은 std가 정확히 0이 아니라 ~1e-19가 될 수 있어
+    # Sharpe가 천문학적 값으로 폭발한다. 실제 일봉 std는 ~0.01~0.03이라 1e-12
+    # 절대 하한으로 걸러도 진짜 신호엔 영향이 없다.
+    if not math.isfinite(std) or std < 1e-12:
         return 0.0
     return float(returns.mean() / std * math.sqrt(periods_per_year))
 
