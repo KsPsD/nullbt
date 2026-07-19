@@ -153,11 +153,15 @@ st.divider()
 # ---- 회의적 리포트 ----
 st.subheader("🔍 회의적 리포트 — 이 결과를 믿어도 될까요?")
 
-dsr = deflated_sharpe(shp / math.sqrt(252), int(n_trials), n_obs)
+# 단일 전략이라 trial 분포가 없으므로 이론적 null 분산 σ_SR ≈ 1/√(n-1)을 sharpe_std로 사용.
+# (explorer는 다수 trial의 경험적 std를 쓰지만, 데모는 백테스트 1회라 이 이론값이 맞다.)
+sharpe_std = 1.0 / math.sqrt(n_obs - 1) if n_obs > 1 else 1.0
+dsr = deflated_sharpe(shp / math.sqrt(252), int(n_trials), n_obs, sharpe_std=sharpe_std)
 col_a, col_b = st.columns(2)
 with col_a:
     st.markdown("**1. Deflated Sharpe (DSR)**")
     st.metric(f"{int(n_trials)}번 시도를 감안한 유의확률", f"{dsr:.3f}")
+    st.caption("0에 가까울수록 '우연과 구분 안 됨'. 지는 전략이면 0이 정상입니다.")
     if dsr >= 0.95:
         st.success("탐색 다중성을 감안해도 0이 아닐 확률이 높습니다. (그래도 증명은 아님)")
     elif dsr >= 0.5:
