@@ -7,6 +7,7 @@ dist/
 .ruff_cache/
 data/
 *.parquet
+!app/sample_data/*.parquet
 *.log
 .env
 .DS_Store

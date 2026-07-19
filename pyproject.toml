@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nullbt"
-version = "0.1.0"
+version = "0.2.0"
 description = "Anti-overfitting backtesting engine for Korean equities — your edge is null until proven"
 readme = "README.md"
 license = "MIT"
@@ -46,6 +46,9 @@ Homepage = "https://github.com/KsPsD/nullbt"
 Issues = "https://github.com/KsPsD/nullbt/issues"
 
 [dependency-groups]
+app = [
+    "streamlit>=1.59.1",
+]
 dev = ["pytest>=8.0"]
 
 [tool.hatch.build.targets.wheel]
