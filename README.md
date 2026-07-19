@@ -7,6 +7,8 @@
 > **네 엣지는 증명 전까지 null이다.**
 > Anti-overfitting backtesting engine for Korean equities.
 
+🕹️ **[설치 없이 브라우저에서 바로 해보기 →](https://nullbt-findit.streamlit.app/)** — 한국 대형주 위에서 전략을 돌리고, 그 결과를 얼마나 의심해야 하는지(DSR·부트스트랩 CI·생존편향) 보여주는 데모.
+
 한국 주식 전략 백테스트의 가장 큰 적은 시장이 아니라 **자기기만**이다.
 nullbt는 전략을 빛나게 하는 도구가 아니라, **전략을 죽이려고 최선을 다하는** 도구다.
 그 공격에서 살아남은 전략만 믿을 가치가 있다.
